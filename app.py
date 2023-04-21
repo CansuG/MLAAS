@@ -17,8 +17,15 @@ app = Flask(__name__)
 
 app.config.from_object(Config)
 db.init_app(app)
-jwt.init_app(app)
 login_manager = LoginManager(app)
+
+@jwt.user_lookup_loader
+def user_lookup_callback(_jwt_header, jwt_data):
+    user_id = jwt_data["sub"]
+    return User.objects(id=user_id).first()
+
+jwt = JWTManager(app)
+jwt.user_lookup_loader(user_lookup_callback)
 
 user_datastore = MongoEngineUserDatastore(db, User, Role)
 security.init_app(app, user_datastore)

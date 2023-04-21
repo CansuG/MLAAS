@@ -3,11 +3,12 @@ from mongoengine import Document, CASCADE, ReferenceField, FloatField, StringFie
 from datetime import datetime
 from flask_security import UserMixin, RoleMixin
 
+from config import Config
 
-class Role(Document, RoleMixin):
-    name = StringField(max_length=80, unique=True)
-    description = StringField(max_length=255)
-    
+
+class Role:
+    ADMIN = 'admin'
+    USER = 'user'
 
 class User(Document, UserMixin):
 
@@ -15,7 +16,7 @@ class User(Document, UserMixin):
     password = StringField(required=True)
     full_name = StringField(required=True)
     created_at = DateTimeField(default=datetime.utcnow)
-    roles = ListField(StringField(choices=['admin', 'user']), default=['user'])
+    role = StringField(choices=[Role.ADMIN, Role.USER], default=[Role.USER])
 
     @staticmethod
     def hash_password(password):
@@ -31,9 +32,17 @@ class User(Document, UserMixin):
         except DoesNotExist:
             return None
 
+    def has_permission(self, permission):
+        if self.role == Role.ADMIN:
+            return Config.ADMIN_PERMISSIONS.get(permission, False)
+        elif self.role == Role.USER:
+            return Config.USER_PERMISSIONS.get(permission, False)
+        return False
+
     def to_dict(self):
         return {
             'email': self.email,
             'full_name': self.full_name,
-            'created_at': self.created_at.isoformat()
+            'created_at': self.created_at.isoformat(),
+            'role': self.role
         }

@@ -1,5 +1,5 @@
 from flask import Blueprint, jsonify, request, current_app
-from flask_jwt_extended import get_jwt_identity, jwt_required
+from flask_jwt_extended import current_user, get_jwt_identity, jwt_required
 from mongoengine.errors import ValidationError
 from models.service import Service
 from flask_security import roles_required, login_required
@@ -39,8 +39,13 @@ def get_summarizer():
 
 @service_bp.route('/summarizer', methods=['POST'])
 @api_login_required
+@jwt_required()
 def create_service():
 
+    #only admin can add service, permission control
+    if not current_user.has_permission('can_create_service'):
+        return jsonify({'message': 'Forbidden'}), 403
+    
     #get information of models
     name = request.json.get('name')
     description = request.json.get('description')

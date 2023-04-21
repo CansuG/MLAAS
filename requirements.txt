@@ -1,0 +1,11 @@
+flask
+flask_jwt_extended
+mongoengine
+flask_security
+transformers
+redis
+torch 
+torchvision 
+torchaudio
+tensorflow
+flask_mongoengine

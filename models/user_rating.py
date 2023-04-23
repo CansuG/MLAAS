@@ -12,7 +12,7 @@ class UserRating(Document):
     def to_dict(self):
         return {
             'user_full_name': str(self.user.full_name),
-            'service_name': str(self.service.description),
+            'service_name': str(self.service.name),
             'rating': self.rating,
             'rated_at': self.rated_at.isoformat()
         }

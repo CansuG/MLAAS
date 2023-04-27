@@ -4,6 +4,7 @@ from flask_jwt_extended import JWTManager
 from flask_security import Security, MongoEngineUserDatastore
 from config import Config
 from flask_login import LoginManager
+from flask_cors import CORS
 
 from models.user import User, Role
 from routes.auth import auth_bp
@@ -14,6 +15,8 @@ jwt = JWTManager()
 security = Security()
 
 app = Flask(__name__)
+
+CORS(app)
 
 app.config.from_object(Config)
 db.init_app(app)

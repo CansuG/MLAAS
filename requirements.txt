@@ -9,4 +9,5 @@ torchvision
 torchaudio
 tensorflow
 flask_mongoengine
+flask_cors
 pytz

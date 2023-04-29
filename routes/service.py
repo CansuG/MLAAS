@@ -3,7 +3,6 @@ from flask_jwt_extended import current_user, get_jwt_identity, jwt_required
 from mongoengine.errors import ValidationError
 from models.service import Service
 from flask_security import roles_required, login_required
-from decorators import api_login_required
 from mongoengine.errors import DoesNotExist
 
 from transformers import pipeline, AutoModelForSeq2SeqLM, AutoTokenizer
@@ -38,7 +37,6 @@ def get_summarizer():
 
 
 @service_bp.route('/summarizer', methods=['POST'])
-@api_login_required
 @jwt_required()
 def create_service():
 
@@ -71,11 +69,9 @@ def create_service():
 
 
 @service_bp.route("/rating", methods=["POST"])
-@api_login_required
 @jwt_required()
 def rate_service():
     current_user_id = get_jwt_identity()
-
     user = User.objects(id=current_user_id).first()
     if not user:
         return {"error": "User not found"}, 404

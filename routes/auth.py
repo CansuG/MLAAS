@@ -1,14 +1,15 @@
-from flask import Blueprint, jsonify, request, session
+from flask import Blueprint, jsonify, request
 from werkzeug.security import generate_password_hash, check_password_hash
 from models.user import Role, User
-from flask_security import current_user, logout_user
-from flask_jwt_extended import create_access_token, get_jwt_identity, jwt_required
-from decorators import api_login_required
-from datetime import datetime, timedelta
-
+from flask_jwt_extended import get_jwt, get_jti, create_access_token, jwt_required
+import redis
+from datetime import timedelta
 from models.user_rating import UserRating
 
 auth_bp = Blueprint('auth', __name__, url_prefix='/auth')
+
+redis_client = redis.Redis(host='localhost', port=6379)
+
 
 @auth_bp.route('/register', methods=['POST'])
 def register():
@@ -43,7 +44,6 @@ def login():
 
     if check_password_hash(user.password, password):
         access_token = create_access_token(identity=str(user.id))
-        session[access_token] = access_token
         return jsonify(access_token=access_token), 200
     else:
         return jsonify({"msg": "Invalid email or password"}), 401
@@ -51,11 +51,12 @@ def login():
 @auth_bp.route('/logout', methods=['POST'])
 @jwt_required()
 def logout():
-    token = request.headers.get('Authorization').split()[1]
-    if token in session:
-        session.pop(token, None)
-        return jsonify({'message': 'Logout successful'}), 200
-    return jsonify({'error': 'Invalid token'}), 401
+    jti = get_jwt()["jti"]
+
+    redis_client.set(jti, jti, ex=timedelta(days=1))
+
+    return jsonify({'message': 'Logout successful'}), 200
+
 
 @auth_bp.route("/user/<user_id>", methods=["GET"])
 def get_user(user_id):

@@ -11,3 +11,4 @@ tensorflow
 flask_mongoengine
 flask_cors
 pytz
+config

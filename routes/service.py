@@ -4,6 +4,12 @@ from mongoengine.errors import ValidationError
 from models.service import Service
 from flask_security import roles_required, login_required
 from mongoengine.errors import DoesNotExist
+import os
+import cv2
+
+UPLOAD_FOLDER = 'static/upload'
+
+
 
 from transformers import pipeline, AutoModelForSeq2SeqLM, AutoTokenizer
 import pickle
@@ -17,10 +23,25 @@ service_bp = Blueprint('service', __name__, url_prefix='/services')
 
 redis_client = redis.Redis(host='localhost', port=6379)
 
-@service_bp.route('/service', methods=['GET'])
+@service_bp.route('/upload', methods=['POST'])
+def upload_file():
+    file = request.files['file']
+    filename = file.filename
+    file.save(os.path.join(UPLOAD_FOLDER, filename))
+    return jsonify({'message': 'Upload successfully'}), 200
+
+@service_bp.route('/services', methods=['GET'])
 def get_services():
     services = Service.objects.all()
     return jsonify([s.to_dict() for s in services]), 200
+
+@service_bp.route('/service/<service_id>', methods=['GET'])
+def get_service(service_id):
+    try:
+        service = Service.objects.get(id=service_id)
+        return jsonify(service.to_dict()), 200
+    except DoesNotExist:
+        return jsonify({'error': 'Service not found'}), 404
 
 
 @service_bp.route('/summarize', methods=['POST'])

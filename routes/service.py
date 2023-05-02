@@ -6,8 +6,10 @@ from flask_security import roles_required, login_required
 from mongoengine.errors import DoesNotExist
 import os
 import cv2
+from gender_model.face_recognition import faceRecognitionPipeline
+from transformers import AutoModelForQuestionAnswering, AutoTokenizer
 
-UPLOAD_FOLDER = 'static/upload'
+UPLOAD_FOLDER = 'static/upload' 
 
 
 
@@ -35,14 +37,76 @@ def get_services():
     services = Service.objects.all()
     return jsonify([s.to_dict() for s in services]), 200
 
-@service_bp.route('/service/<service_id>', methods=['GET'])
-def get_service(service_id):
+
+@service_bp.route('/service/<model_name>', methods=['GET'])
+def get_service(model_name):
     try:
-        service = Service.objects.get(id=service_id)
+        service = Service.objects.get(model_name=model_name)
         return jsonify(service.to_dict()), 200
     except DoesNotExist:
         return jsonify({'error': 'Service not found'}), 404
 
+
+
+@service_bp.route('/genderapp', methods=['POST'])
+def gender_predict():
+    file = request.files['file']
+    filename = file.filename
+    path = os.path.join(UPLOAD_FOLDER, filename)
+    file.save(path)
+    # get predictions
+    pred_image, predictions = faceRecognitionPipeline(path)
+    # save image
+    pred_filename = 'prediction_image.jpg'
+    cv2.imwrite(f'./static/predict/{pred_filename}', pred_image)
+
+    return jsonify({'message': 'Prediction was made successfully'}), 200
+
+@service_bp.route('/set-qa', methods=['POST'])
+@jwt_required()
+def set_question_answering():
+    #only admin can add service, permission control
+    if not current_user.has_permission('can_create_service'):
+        return jsonify({'message': 'Forbidden'}), 403
+    
+        #get information of models
+    name = request.json.get('name')
+    description = request.json.get('description')
+    model_name = request.json.get('model_name')
+    model_type = request.json.get('model_type')
+
+    model = AutoModelForQuestionAnswering.from_pretrained(model_name)
+    tokenizer = AutoTokenizer.from_pretrained(model_name)
+    question_answerer = pipeline('question-answering', model=model, tokenizer=tokenizer)
+    model_question_answerer = pickle.dumps(question_answerer)
+   ## result = question_answerer(context=input_text, question=question)
+
+    redis_client.set(model_type, model_question_answerer, ex=31536000)
+
+    qa = Service(name = name, description = description,model_name= model_name, model_type= model_type )
+
+    try:
+        qa.save()
+        return jsonify(qa.to_dict()), 201
+    except ValidationError as e:
+        return jsonify({'error': str(e)}), 400
+
+
+
+@service_bp.route('/qa', methods=['POST'])
+def get_question_answering():
+
+    input_text = request.json.get('text')
+    question = request.json.get('question')
+  ##  model_name = "distilbert-base-cased-distilled-squad"
+    model_type = "question answering"
+    question_answerer = pickle.loads(redis_client.get(model_type))
+    result = question_answerer(context=input_text, question=question)
+
+    try:
+        return jsonify({'answer': result['answer']}), 200
+    except ValidationError as e:
+        return jsonify({'error': str(e)}), 400
 
 @service_bp.route('/summarize', methods=['POST'])
 def get_summarizer():

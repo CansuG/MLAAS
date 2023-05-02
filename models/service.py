@@ -2,6 +2,7 @@ from datetime import datetime
 from mongoengine import Document, StringField, DateTimeField, ObjectIdField
 
 class Service(Document):
+
     name = StringField(required=True)
     description = StringField(required=True)
     model_type = StringField(required=True)

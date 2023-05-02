@@ -1,7 +1,7 @@
 from flask import Blueprint, jsonify, request
 from werkzeug.security import generate_password_hash, check_password_hash
 from models.user import Role, User
-from flask_jwt_extended import get_jwt, get_jti, create_access_token, jwt_required
+from flask_jwt_extended import get_jwt, get_jti, create_access_token, get_jwt_identity, jwt_required
 import redis
 from datetime import timedelta
 from models.user_rating import UserRating
@@ -9,6 +9,7 @@ from models.user_rating import UserRating
 auth_bp = Blueprint('auth', __name__, url_prefix='/auth')
 
 redis_client = redis.Redis(host='localhost', port=6379)
+
 
 
 @auth_bp.route('/register', methods=['POST'])
@@ -58,8 +59,10 @@ def logout():
     return jsonify({'message': 'Logout successful'}), 200
 
 
-@auth_bp.route("/user/<user_id>", methods=["GET"])
-def get_user(user_id):
+@auth_bp.route("/user", methods=["GET"])
+@jwt_required()
+def get_current_user():
+    user_id = get_jwt_identity()
     user = User.objects(id=user_id).first()
     if not user:
         return {"error": "User not found"}, 404
@@ -70,8 +73,10 @@ def get_users():
     users = User.objects.all()
     return jsonify([u.to_dict() for u in users]), 200
 
-@auth_bp.route("/users/<user_id>", methods=["DELETE"])
-def delete_user(user_id):
+@auth_bp.route("/user-delete", methods=["DELETE"])
+@jwt_required()
+def delete_user():
+    user_id = get_jwt_identity()
     user = User.objects(id=user_id).first()
     if not user:
         return {"error": "User not found"}, 404
@@ -79,8 +84,10 @@ def delete_user(user_id):
     UserRating.objects(user=user).delete()
     return {"message": "User successfully deleted! "}, 200
 
-@auth_bp.route("/users/<user_id>", methods=["PUT"])
-def update_user(user_id):
+@auth_bp.route("/user-update", methods=["PUT"])
+@jwt_required()
+def update_user():
+    user_id = get_jwt_identity()
     user = User.objects(id=user_id).first()
     if not user:
         return {"error": "User not found"}, 404

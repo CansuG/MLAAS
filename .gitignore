@@ -4,6 +4,8 @@
 models/__pycache__
 routes/__pycache__
 
+/static
+
 # Virtualenv
 .Python
 [Bb]in

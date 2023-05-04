@@ -9,6 +9,8 @@ import os
 import cv2
 from gender_model.face_recognition import faceRecognitionPipeline
 from transformers import AutoModelForQuestionAnswering, AutoTokenizer
+import base64
+import matplotlib.image as matimg
 
 UPLOAD_FOLDER = 'static/upload' 
 

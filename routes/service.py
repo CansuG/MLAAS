@@ -1,4 +1,5 @@
 from flask import Blueprint, jsonify, request, current_app
+from flask import send_file
 from flask_jwt_extended import current_user, get_jwt_identity, jwt_required
 from mongoengine.errors import ValidationError
 from models.service import Service
@@ -48,7 +49,7 @@ def get_service(model_name):
 
 
 
-@service_bp.route('/genderapp', methods=['POST'])
+@service_bp.route('/transformers', methods=['POST'])
 def gender_predict():
     file = request.files['file']
     filename = file.filename
@@ -60,7 +61,9 @@ def gender_predict():
     pred_filename = 'prediction_image.jpg'
     cv2.imwrite(f'./static/predict/{pred_filename}', pred_image)
 
-    return jsonify({'message': 'Prediction was made successfully'}), 200
+    return send_file(f'./static/predict/{pred_filename}', mimetype='image/jpeg')
+
+   # return jsonify({'message': 'Prediction was made successfully'}), 200
 
 @service_bp.route('/set-qa', methods=['POST'])
 @jwt_required()

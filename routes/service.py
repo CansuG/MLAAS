@@ -49,6 +49,12 @@ def get_service(model_name):
     except DoesNotExist:
         return jsonify({'error': 'Service not found'}), 404
 
+@service_bp.route('/get_predicted_image', methods=['GET'])
+def get_predicted_image():
+    pred_filename = 'prediction_image.jpg'
+    with open(f'./static/predict/{pred_filename}', 'rb') as f:
+        predicted_image_data = base64.b64encode(f.read()).decode('utf-8')
+    return predicted_image_data
 
 @service_bp.route('/gender_classification', methods=['POST'])
 def gender_classification():
@@ -91,13 +97,8 @@ def gender_classification():
             'eig_image_data': eig_image_data,
             'gender_name': gender_name
         })
-
-
-    with open(f'./static/predict/{pred_filename}', 'rb') as f:
-        predicted_image_data = base64.b64encode(f.read()).decode('utf-8')
      
     return jsonify({'report': report}), 200
-
 
 @service_bp.route('/transformers', methods=['POST'])
 def gender_predict():

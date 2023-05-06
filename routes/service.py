@@ -11,6 +11,9 @@ from gender_model.face_recognition import faceRecognitionPipeline
 from transformers import AutoModelForQuestionAnswering, AutoTokenizer
 import base64
 import matplotlib.image as matimg
+from io import BytesIO
+import imghdr
+
 
 UPLOAD_FOLDER = 'static/upload' 
 
@@ -49,12 +52,6 @@ def get_service(model_name):
     except DoesNotExist:
         return jsonify({'error': 'Service not found'}), 404
 
-@service_bp.route('/get_predicted_image', methods=['GET'])
-def get_predicted_image():
-    pred_filename = 'prediction_image.jpg'
-    with open(f'./static/predict/{pred_filename}', 'rb') as f:
-        predicted_image_data = base64.b64encode(f.read()).decode('utf-8')
-    return predicted_image_data
 
 @service_bp.route('/gender_classification', methods=['POST'])
 def gender_classification():
@@ -62,43 +59,39 @@ def gender_classification():
         return jsonify({'error': 'No file uploaded.'}), 400
 
     f = request.files['file']
-    filename = f.filename
-    # save our image in upload folder
-    path = os.path.join(UPLOAD_FOLDER,filename)
-    f.save(path) # save image into upload folder
+    file_bytes = f.read()
+
+    # Check image format
+    img_format = 'jpg'
+
     # get predictions
-    pred_image, predictions = faceRecognitionPipeline(path)
-    pred_filename = 'prediction_image.jpg'
-    cv2.imwrite(f'./static/predict/{pred_filename}',pred_image)
-        
+    pred_image, predictions = faceRecognitionPipeline(file_bytes)
+    
+    pred_image_bytes = cv2.imencode('.' + img_format, pred_image)[1].tobytes()
+
     # generate report
     report = []
 
-    for i , obj in enumerate(predictions):
+    for i, obj in enumerate(predictions):
         gray_image = obj['roi'] # grayscale image (array)
         eigen_image = obj['eig_img'].reshape(100,100) # eigen image (array)
         gender_name = obj['prediction_name'] # name 
-            
-        # save grayscale and eigen in predict folder
-        gray_image_name = f'roi_{i}.jpg'
-        eig_image_name = f'eigen_{i}.jpg'
-        matimg.imsave(f'./static/predict/{gray_image_name}',gray_image,cmap='gray')
-        matimg.imsave(f'./static/predict/{eig_image_name}',eigen_image,cmap='gray')
-        
-        # encode images as base64 strings
-        with open(f'./static/predict/{gray_image_name}', 'rb') as f:
-            gray_image_data = base64.b64encode(f.read()).decode('utf-8')
-        with open(f'./static/predict/{eig_image_name}', 'rb') as f:
-            eig_image_data = base64.b64encode(f.read()).decode('utf-8')
-            
+
+        pred_image_bytes = cv2.imencode('.' + img_format, gray_image)[1].tobytes()
+        eigen_image_bytes = cv2.imencode('.' + img_format, eigen_image)[1].tobytes()
+
+        gray_image_data = base64.b64encode(pred_image_bytes).decode('utf-8')
+        eig_image_data = base64.b64encode(eigen_image_bytes).decode('utf-8')
+
         # save report 
         report.append({
             'gray_image_data': gray_image_data,
             'eig_image_data': eig_image_data,
             'gender_name': gender_name
         })
-     
-    return jsonify({'report': report}), 200
+        
+
+    return jsonify({'report': report, 'prediction_image_data': base64.b64encode(pred_image_bytes).decode('utf-8')}), 200
 
 @service_bp.route('/transformers', methods=['POST'])
 def gender_predict():

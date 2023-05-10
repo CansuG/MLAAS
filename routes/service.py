@@ -2,6 +2,7 @@ from flask import Blueprint, jsonify, request, current_app
 from flask import send_file
 from flask_jwt_extended import current_user, get_jwt_identity, jwt_required
 from mongoengine.errors import ValidationError
+import requests
 from models.service import Service
 from flask_security import roles_required, login_required
 from mongoengine.errors import DoesNotExist
@@ -11,6 +12,9 @@ from gender_model.face_recognition import faceRecognitionPipeline
 from transformers import AutoModelForQuestionAnswering, AutoTokenizer
 import base64
 import matplotlib.image as matimg
+from PIL import Image
+import numpy as np
+import io 
 
 UPLOAD_FOLDER = 'static/upload' 
 
@@ -56,18 +60,24 @@ def gender_classification():
         return jsonify({'error': 'No file uploaded.'}), 400
 
     f = request.files['file']
-    filename = f.filename
-    # save our image in upload folder
-    path = os.path.join(UPLOAD_FOLDER,filename)
-    f.save(path) # save image into upload folder
-    # get predictions
-    pred_image, predictions = faceRecognitionPipeline(path)
-    pred_filename = 'prediction_image.jpg'
-    cv2.imwrite(f'./static/predict/{pred_filename}',pred_image)
-        
-    # generate report
-    report = []
 
+    image_pil = Image.open(f)
+
+    # Convert PIL image to OpenCV-compatible format
+    image_cv = np.array(image_pil)
+    image_cv = cv2.cvtColor(image_cv, cv2.COLOR_RGB2BGR)  # Convert from RGB to BGR (OpenCV format)
+
+
+    # get predictions
+    pred_image, predictions = faceRecognitionPipeline(image_cv,path=False)
+
+    # Convert the image to Base64-encoded string
+    _, img_encoded = cv2.imencode('.jpg', pred_image)
+
+    predicted_image_data = base64.b64encode(img_encoded).decode('utf-8')
+
+    # Prepare the predictions list
+    report = []
     for i , obj in enumerate(predictions):
         gray_image = obj['roi'] # grayscale image (array)
         eigen_image = obj['eig_img'].reshape(100,100) # eigen image (array)
@@ -91,10 +101,7 @@ def gender_classification():
             'eig_image_data': eig_image_data,
             'gender_name': gender_name
         })
-
-    with open(f'./static/predict/{pred_filename}', 'rb') as f:
-        predicted_image_data = base64.b64encode(f.read()).decode('utf-8')
-
+    
     return jsonify({'report': report, 'predicted_image_data': predicted_image_data}), 200
 
 @service_bp.route('/transformers', methods=['POST'])

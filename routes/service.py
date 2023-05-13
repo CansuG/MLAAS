@@ -49,16 +49,6 @@ def get_service(model_name):
     except DoesNotExist:
         return jsonify({'error': 'Service not found'}), 404
 
-# OUR MODEL WHICH RETURNS IMAGE AS A BASE64 BYTE FORMAT
-
-@service_bp.route('/get_predicted_image', methods=['GET'])
-def get_predicted_image():
-    pred_filename = 'prediction_image.jpg'
-    with open(f'./static/predict/{pred_filename}', 'rb') as f:
-        predicted_image_data = base64.b64encode(f.read()).decode('utf-8')
-    return predicted_image_data
-
-# GENDER CLASSIFICATION WITH BASE64 ENCODED IMAGES
 
 @service_bp.route('/gender_classification', methods=['POST'])
 def gender_classification():
@@ -102,13 +92,10 @@ def gender_classification():
             'gender_name': gender_name
         })
 
-
     with open(f'./static/predict/{pred_filename}', 'rb') as f:
         predicted_image_data = base64.b64encode(f.read()).decode('utf-8')
-     
-    return jsonify({'report': report}), 200
 
-# OUR MODEL WHICH RETURNS IMAGE AS A RESPONSE
+    return jsonify({'report': report, 'predicted_image_data': predicted_image_data}), 200
 
 @service_bp.route('/transformers', methods=['POST'])
 def gender_predict():
@@ -125,8 +112,6 @@ def gender_predict():
     return send_file(f'./static/predict/{pred_filename}', mimetype='image/jpeg')
 
    # return jsonify({'message': 'Prediction was made successfully'}), 200
-
-# QUESTION ANSWERING
 
 @service_bp.route('/set-qa', methods=['POST'])
 @jwt_required()
@@ -174,8 +159,6 @@ def get_question_answering():
     except ValidationError as e:
         return jsonify({'error': str(e)}), 400
 
-# SUMMARIZER
-
 @service_bp.route('/summarize', methods=['POST'])
 def get_summarizer():
 
@@ -219,14 +202,6 @@ def create_service():
         return jsonify(service.to_dict()), 201
     except ValidationError as e:
         return jsonify({'error': str(e)}), 400
-
-# SENTIMENT ANALYSIS
-# save sentiment analysis model to redis and database
-@service_bp.route('/set-sentiment-analysis', methods=['POST'])
-
-
-# use sentiment analysis method
-@service_bp.route('/sentiment-analysis', methods=['POST'])
 
 
 @service_bp.route("/rating", methods=["POST"])

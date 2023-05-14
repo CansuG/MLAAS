@@ -8,7 +8,7 @@ from mongoengine.errors import DoesNotExist
 import os
 import cv2
 from gender_model.face_recognition import faceRecognitionPipeline
-from transformers import AutoModelForQuestionAnswering, AutoTokenizer
+from transformers import AutoModelForQuestionAnswering, AutoTokenizer, AutoModelForSequenceClassification
 import base64
 import matplotlib.image as matimg
 
@@ -158,6 +158,53 @@ def get_question_answering():
         return jsonify({'answer': result['answer']}), 200
     except ValidationError as e:
         return jsonify({'error': str(e)}), 400
+    
+# SENTIMENT ANALYSIS
+
+# save sentiment analysis model to redis and database
+@service_bp.route('/set-sentiment-analysis', methods=['POST'])
+@jwt_required()
+def create_sentiment_analysis():
+    #only admin can add service, permission control
+    if not current_user.has_permission('can_create_service'):
+        return jsonify({'message': 'Forbidden'}), 403
+    
+    #get information of models
+    name = request.json.get('name')
+    description = request.json.get('description')
+    model_name = request.json.get('model_name')
+    model_type = request.json.get('model_type')
+
+    model = AutoModelForSequenceClassification.from_pretrained(model_name)
+    tokenizer = AutoTokenizer.from_pretrained(model_name)
+    sentiment_analyzer = pipeline('sentiment-analysis', model=model, tokenizer=tokenizer)
+    model_sentiment_analysis = pickle.dumps(sentiment_analyzer)
+    #result = sentiment_analyzer(input_text)
+
+    redis_client.set(model_type, model_sentiment_analysis, ex=31536000)
+
+    sentiment_analysis = Service(name = name, description = description,model_name= model_name, model_type= model_type )
+
+    try:
+        sentiment_analysis.save()
+        return jsonify(sentiment_analysis.to_dict()), 201
+    except ValidationError as e:
+        return jsonify({'error': str(e)}), 400
+
+
+# use sentiment analysis method
+@service_bp.route('/sentiment-analysis', methods=['POST'])
+def get_sentiment_analysis():
+    
+        input_text = request.json.get('text')
+        model_type = "sentiment-analysis"
+        sentiment_analyzer = pickle.loads(redis_client.get(model_type))
+        result = sentiment_analyzer(input_text)
+    
+        try:
+            return jsonify({'sentiment': result[0]['label']}), 200
+        except ValidationError as e:
+            return jsonify({'error': str(e)}), 400
 
 @service_bp.route('/summarize', methods=['POST'])
 def get_summarizer():

@@ -9,6 +9,7 @@ import os
 import cv2
 from gender_model.face_recognition import faceRecognitionPipeline
 from transformers import AutoModelForQuestionAnswering, AutoTokenizer, AutoModelForSequenceClassification
+from transformers import GPT2LMHeadModel, GPT2Tokenizer
 import base64
 import matplotlib.image as matimg
 
@@ -142,6 +143,56 @@ def set_question_answering():
     except ValidationError as e:
         return jsonify({'error': str(e)}), 400
 
+
+
+@service_bp.route('/set-text-generation', methods=['POST'])
+@jwt_required()
+def create_text_generator():
+    #only admin can add service, permission control
+    if not current_user.has_permission('can_create_service'):
+        return jsonify({'message': 'Forbidden'}), 403
+    
+    #get information of models
+    name = request.json.get('name')
+    description = request.json.get('description')
+    model_name = request.json.get('model_name')
+    model_type = request.json.get('model_type')
+
+    #gpt2-large
+    tokenizer = GPT2Tokenizer.from_pretrained(model_name)
+    model=GPT2LMHeadModel.from_pretrained(model_name,pad_token_id=tokenizer.eos_token_id)
+    text_generator = pipeline('text-generator', model=model, tokenizer=tokenizer)
+    model_text_generator = pickle.dumps(text_generator)
+
+    redis_client.set(model_type, model_text_generator, ex=31536000)
+
+    text_generator_service = Service(name = name, description = description,model_name= model_name, model_type= model_type )
+
+    try:
+        text_generator_service.save()
+        return jsonify(text_generator_service.to_dict()), 201
+    except ValidationError as e:
+        return jsonify({'error': str(e)}), 400
+
+
+@service_bp.route('/text-generation', methods=['POST'])
+def get_text_generator():
+
+    input_text = request.json.get('text')
+
+    tokenizer = GPT2Tokenizer.from_pretrained('gpt2-large')
+
+    input_ids=tokenizer.encode(input_text,return_tensors='pt')
+
+    model_type = "text_generator"
+    model_text_generator = pickle.loads(redis_client.get(model_type))
+    output=model_text_generator.generate(input_ids,max_length=100,num_beams=5,no_repeat_ngram_size=2,early_stopping=True)
+    result=tokenizer.decode(output[0],skip_special_tokens=True)
+
+    try:
+        return jsonify({'result': result}), 200
+    except ValidationError as e:
+        return jsonify({'error': str(e)}), 400
 
 
 @service_bp.route('/qa', methods=['POST'])

@@ -2,19 +2,18 @@ from flask import Blueprint, jsonify, request, current_app
 from flask import send_file
 from flask_jwt_extended import current_user, get_jwt_identity, jwt_required
 from mongoengine.errors import ValidationError
+import requests
 from models.service import Service
 from flask_security import roles_required, login_required
 from mongoengine.errors import DoesNotExist
 import os
 import cv2
 from gender_model.face_recognition import faceRecognitionPipeline
-from transformers import AutoModelForQuestionAnswering, AutoTokenizer, AutoModelForSequenceClassification
+from transformers import AutoModelForQuestionAnswering, AutoTokenizer
 import base64
 import matplotlib.image as matimg
-
-UPLOAD_FOLDER = 'static/upload' 
-
-
+from PIL import Image
+import numpy as np
 
 from transformers import pipeline, AutoModelForSeq2SeqLM, AutoTokenizer
 import pickle
@@ -24,16 +23,13 @@ from models.user import User
 from models.user_rating import UserRating
 
 
+UPLOAD_FOLDER = 'static/upload' 
+
 service_bp = Blueprint('service', __name__, url_prefix='/services')
 
 redis_client = redis.Redis(host='localhost', port=6379)
 
-@service_bp.route('/upload', methods=['POST'])
-def upload_file():
-    file = request.files['file']
-    filename = file.filename
-    file.save(os.path.join(UPLOAD_FOLDER, filename))
-    return jsonify({'message': 'Upload successfully'}), 200
+
 
 @service_bp.route('/services', methods=['GET'])
 def get_services():
@@ -56,46 +52,24 @@ def gender_classification():
         return jsonify({'error': 'No file uploaded.'}), 400
 
     f = request.files['file']
-    filename = f.filename
-    # save our image in upload folder
-    path = os.path.join(UPLOAD_FOLDER,filename)
-    f.save(path) # save image into upload folder
+
+    image_pil = Image.open(f)
+
+    # Convert PIL image to OpenCV-compatible format
+    image_cv = np.array(image_pil)
+    image_cv = cv2.cvtColor(image_cv, cv2.COLOR_RGB2BGR)  # Convert from RGB to BGR (OpenCV format)
+
+
     # get predictions
-    pred_image, predictions = faceRecognitionPipeline(path)
-    pred_filename = 'prediction_image.jpg'
-    cv2.imwrite(f'./static/predict/{pred_filename}',pred_image)
-        
-    # generate report
-    report = []
+    pred_image, predictions = faceRecognitionPipeline(image_cv,path=False)
 
-    for i , obj in enumerate(predictions):
-        gray_image = obj['roi'] # grayscale image (array)
-        eigen_image = obj['eig_img'].reshape(100,100) # eigen image (array)
-        gender_name = obj['prediction_name'] # name 
-            
-        # save grayscale and eigen in predict folder
-        gray_image_name = f'roi_{i}.jpg'
-        eig_image_name = f'eigen_{i}.jpg'
-        matimg.imsave(f'./static/predict/{gray_image_name}',gray_image,cmap='gray')
-        matimg.imsave(f'./static/predict/{eig_image_name}',eigen_image,cmap='gray')
-        
-        # encode images as base64 strings
-        with open(f'./static/predict/{gray_image_name}', 'rb') as f:
-            gray_image_data = base64.b64encode(f.read()).decode('utf-8')
-        with open(f'./static/predict/{eig_image_name}', 'rb') as f:
-            eig_image_data = base64.b64encode(f.read()).decode('utf-8')
-            
-        # save report 
-        report.append({
-            'gray_image_data': gray_image_data,
-            'eig_image_data': eig_image_data,
-            'gender_name': gender_name
-        })
+    # Convert the image to Base64-encoded string
+    _, img_encoded = cv2.imencode('.jpg', pred_image)
 
-    with open(f'./static/predict/{pred_filename}', 'rb') as f:
-        predicted_image_data = base64.b64encode(f.read()).decode('utf-8')
+    predicted_image_data = base64.b64encode(img_encoded).decode('utf-8')
 
-    return jsonify({'report': report, 'predicted_image_data': predicted_image_data}), 200
+    
+    return jsonify({'predicted_image_data': predicted_image_data}), 200
 
 @service_bp.route('/transformers', methods=['POST'])
 def gender_predict():
@@ -142,6 +116,56 @@ def set_question_answering():
     except ValidationError as e:
         return jsonify({'error': str(e)}), 400
 
+
+
+@service_bp.route('/set-text-generation', methods=['POST'])
+@jwt_required()
+def create_text_generator():
+    #only admin can add service, permission control
+    if not current_user.has_permission('can_create_service'):
+        return jsonify({'message': 'Forbidden'}), 403
+    
+    #get information of models
+    name = request.json.get('name')
+    description = request.json.get('description')
+    model_name = request.json.get('model_name')
+    model_type = request.json.get('model_type')
+
+    #gpt2-large
+    tokenizer = GPT2Tokenizer.from_pretrained(model_name)
+    model=GPT2LMHeadModel.from_pretrained(model_name,pad_token_id=tokenizer.eos_token_id)
+    text_generator = pipeline('text-generator', model=model, tokenizer=tokenizer)
+    model_text_generator = pickle.dumps(text_generator)
+
+    redis_client.set(model_type, model_text_generator, ex=31536000)
+
+    text_generator_service = Service(name = name, description = description,model_name= model_name, model_type= model_type )
+
+    try:
+        text_generator_service.save()
+        return jsonify(text_generator_service.to_dict()), 201
+    except ValidationError as e:
+        return jsonify({'error': str(e)}), 400
+
+
+@service_bp.route('/text-generation', methods=['POST'])
+def get_text_generator():
+
+    input_text = request.json.get('text')
+
+    tokenizer = GPT2Tokenizer.from_pretrained('gpt2-large')
+
+    input_ids=tokenizer.encode(input_text,return_tensors='pt')
+
+    model_type = "text_generator"
+    model_text_generator = pickle.loads(redis_client.get(model_type))
+    output=model_text_generator.generate(input_ids,max_length=100,num_beams=5,no_repeat_ngram_size=2,early_stopping=True)
+    result=tokenizer.decode(output[0],skip_special_tokens=True)
+
+    try:
+        return jsonify({'result': result}), 200
+    except ValidationError as e:
+        return jsonify({'error': str(e)}), 400
 
 
 @service_bp.route('/qa', methods=['POST'])

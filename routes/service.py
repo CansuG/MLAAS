@@ -117,7 +117,20 @@ def set_question_answering():
     except ValidationError as e:
         return jsonify({'error': str(e)}), 400
 
+@service_bp.route('/qa', methods=['POST'])
+def get_question_answering():
 
+    input_text = request.json.get('text')
+    question = request.json.get('question')
+  ##  model_name = "distilbert-base-cased-distilled-squad"
+    model_type = "question answering"
+    question_answerer = pickle.loads(redis_client.get(model_type))
+    result = question_answerer(context=input_text, question=question)
+
+    try:
+        return jsonify({'answer': result['answer']}), 200
+    except ValidationError as e:
+        return jsonify({'error': str(e)}), 400
 
 @service_bp.route('/set-text-generation', methods=['POST'])
 @jwt_required()
@@ -169,20 +182,7 @@ def get_text_generator():
         return jsonify({'error': str(e)}), 400
 
 
-@service_bp.route('/qa', methods=['POST'])
-def get_question_answering():
 
-    input_text = request.json.get('text')
-    question = request.json.get('question')
-  ##  model_name = "distilbert-base-cased-distilled-squad"
-    model_type = "question answering"
-    question_answerer = pickle.loads(redis_client.get(model_type))
-    result = question_answerer(context=input_text, question=question)
-
-    try:
-        return jsonify({'answer': result['answer']}), 200
-    except ValidationError as e:
-        return jsonify({'error': str(e)}), 400
     
 # SENTIMENT ANALYSIS
 

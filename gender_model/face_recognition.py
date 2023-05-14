@@ -58,8 +58,7 @@ def faceRecognitionPipeline(filename, path=True):
         output = {
             'roi':roi,
             'eig_img': eig_img,
-            'prediction_name':results[0],
-            'score':prob_score_max
+            'prediction_name':results[0]
         }
 
         predictions.append(output)

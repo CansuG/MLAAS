@@ -15,11 +15,6 @@ import base64
 import matplotlib.image as matimg
 from PIL import Image
 import numpy as np
-import io 
-
-UPLOAD_FOLDER = 'static/upload' 
-
-
 
 from transformers import pipeline, AutoModelForSeq2SeqLM, AutoTokenizer
 import pickle
@@ -29,16 +24,13 @@ from models.user import User
 from models.user_rating import UserRating
 
 
+UPLOAD_FOLDER = 'static/upload' 
+
 service_bp = Blueprint('service', __name__, url_prefix='/services')
 
 redis_client = redis.Redis(host='localhost', port=6379)
 
-@service_bp.route('/upload', methods=['POST'])
-def upload_file():
-    file = request.files['file']
-    filename = file.filename
-    file.save(os.path.join(UPLOAD_FOLDER, filename))
-    return jsonify({'message': 'Upload successfully'}), 200
+
 
 @service_bp.route('/services', methods=['GET'])
 def get_services():
@@ -77,33 +69,8 @@ def gender_classification():
 
     predicted_image_data = base64.b64encode(img_encoded).decode('utf-8')
 
-    # Prepare the predictions list
-    report = []
-    for i , obj in enumerate(predictions):
-        gray_image = obj['roi'] # grayscale image (array)
-        eigen_image = obj['eig_img'].reshape(100,100) # eigen image (array)
-        gender_name = obj['prediction_name'] # name 
-            
-        # save grayscale and eigen in predict folder
-        gray_image_name = f'roi_{i}.jpg'
-        eig_image_name = f'eigen_{i}.jpg'
-        matimg.imsave(f'./static/predict/{gray_image_name}',gray_image,cmap='gray')
-        matimg.imsave(f'./static/predict/{eig_image_name}',eigen_image,cmap='gray')
-        
-        # encode images as base64 strings
-        with open(f'./static/predict/{gray_image_name}', 'rb') as f:
-            gray_image_data = base64.b64encode(f.read()).decode('utf-8')
-        with open(f'./static/predict/{eig_image_name}', 'rb') as f:
-            eig_image_data = base64.b64encode(f.read()).decode('utf-8')
-            
-        # save report 
-        report.append({
-            'gray_image_data': gray_image_data,
-            'eig_image_data': eig_image_data,
-            'gender_name': gender_name
-        })
     
-    return jsonify({'report': report, 'predicted_image_data': predicted_image_data}), 200
+    return jsonify({'predicted_image_data': predicted_image_data}), 200
 
 @service_bp.route('/transformers', methods=['POST'])
 def gender_predict():

@@ -12,9 +12,10 @@ from gender_model.face_recognition import faceRecognitionPipeline
 from transformers import AutoModelForQuestionAnswering, AutoTokenizer, AutoModelForSequenceClassification
 from transformers import GPT2LMHeadModel, GPT2Tokenizer
 import base64
-import matplotlib.image as matimg
 from PIL import Image
 import numpy as np
+import io
+import torch
 
 from transformers import pipeline, AutoModelForSeq2SeqLM, AutoTokenizer
 import pickle
@@ -148,8 +149,18 @@ def create_text_generator():
     #gpt2-large
     tokenizer = GPT2Tokenizer.from_pretrained(model_name)
     model=GPT2LMHeadModel.from_pretrained(model_name,pad_token_id=tokenizer.eos_token_id)
-    text_generator = pipeline('text-generator', model=model, tokenizer=tokenizer)
+    text_generator = pipeline('text-generation', model=model, tokenizer=tokenizer)
     model_text_generator = pickle.dumps(text_generator)
+
+    # Split the model into chunks
+    chunk_size = 400 * 1024 * 1024  # 10 MB
+    chunks = [model_text_generator[i:i+chunk_size] for i in range(0, len(model_text_generator), chunk_size)]
+
+    # Store the model chunks in Redis
+    for i, chunk in enumerate(chunks):
+        key = f'model_chunk:{i}'
+        redis_client.set(key, chunk)
+
 
     redis_client.set(model_type, model_text_generator, ex=31536000)
 
@@ -164,17 +175,35 @@ def create_text_generator():
 
 @service_bp.route('/text-generation', methods=['POST'])
 def get_text_generator():
-
     input_text = request.json.get('text')
 
     tokenizer = GPT2Tokenizer.from_pretrained('gpt2-large')
 
-    input_ids=tokenizer.encode(input_text,return_tensors='pt')
+    input_ids = tokenizer.encode(input_text, return_tensors='pt')
 
     model_type = "text_generator"
-    model_text_generator = pickle.loads(redis_client.get(model_type))
-    output=model_text_generator.generate(input_ids,max_length=100,num_beams=5,no_repeat_ngram_size=2,early_stopping=True)
-    result=tokenizer.decode(output[0],skip_special_tokens=True)
+
+    model_chunks = []
+    num_chunks = len(redis_client.keys("model_chunk:*"))
+
+    for i in range(num_chunks):
+        key = f'model_chunk:{i}'
+        chunk = redis_client.get(key)
+        if chunk is not None:
+            model_chunks.append(chunk)
+
+    # Concatenate and reconstruct the model data
+    model_data = b''.join(model_chunks)
+
+    # Reconstruct the model from the model data
+    try:
+        model = torch.load(io.BytesIO(model_data))
+    except pickle.UnpicklingError:
+        return jsonify({'error': 'Failed to load model'}), 500
+
+    # Generate text using the model
+    output = model.generate(input_ids, max_length=100, num_beams=5, no_repeat_ngram_size=2, early_stopping=True)
+    result = tokenizer.decode(output[0], skip_special_tokens=True)
 
     try:
         return jsonify({'result': result}), 200

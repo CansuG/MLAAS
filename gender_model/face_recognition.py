@@ -46,7 +46,7 @@ def faceRecognitionPipeline(filename, path=True):
         prob_score = model_svm.predict_proba(eigen_image)
         prob_score_max = prob_score.max()
         # step-11: generate report
-        text = "%s : %d"%(results[0],prob_score_max*100)
+        text = "%s"%(results[0])
         # defining color based on results
         if results[0] == 'male':
             color = (255,255,0)

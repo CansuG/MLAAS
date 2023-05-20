@@ -47,7 +47,28 @@ def get_service(model_name):
     except DoesNotExist:
         return jsonify({'error': 'Service not found'}), 404
 
+@service_bp.route('/set_gender_classification', methods=['POST'])
+@jwt_required()
+def create_service_gender_classifier():
 
+    #only admin can add service, permission control
+    if not current_user.has_permission('can_create_service'):
+        return jsonify({'message': 'Forbidden'}), 403
+    
+    #get information of models
+    name = request.json.get('name')
+    description = request.json.get('description')
+    model_name = request.json.get('model_name')
+    model_type = request.json.get('model_type')
+
+    service = Service(name = name, description = description,model_name= model_name, model_type= model_type )
+
+    try:
+        service.save()
+        return jsonify(service.to_dict()), 201
+    except ValidationError as e:
+        return jsonify({'error': str(e)}), 400
+    
 @service_bp.route('/gender_classification', methods=['POST'])
 def gender_classification():
     if 'file' not in request.files:

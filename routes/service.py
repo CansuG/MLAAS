@@ -1,8 +1,10 @@
+import json
 from flask import Blueprint, jsonify, request, current_app
 from flask import send_file
 from flask_jwt_extended import current_user, get_jwt_identity, jwt_required
 from mongoengine.errors import ValidationError
 import requests
+from config import Config
 from models.service import Service
 from flask_security import roles_required, login_required
 from mongoengine.errors import DoesNotExist
@@ -47,9 +49,9 @@ def get_service(model_name):
     except DoesNotExist:
         return jsonify({'error': 'Service not found'}), 404
 
-@service_bp.route('/set_gender_classification', methods=['POST'])
+@service_bp.route('/new_service', methods=['POST'])
 @jwt_required()
-def create_service_gender_classifier():
+def create_service():
 
     #only admin can add service, permission control
     if not current_user.has_permission('can_create_service'):
@@ -154,133 +156,6 @@ def get_question_answering():
     except ValidationError as e:
         return jsonify({'error': str(e)}), 400
 
-@service_bp.route('/set-text-generation', methods=['POST'])
-@jwt_required()
-def create_text_generator():
-    #only admin can add service, permission control
-    if not current_user.has_permission('can_create_service'):
-        return jsonify({'message': 'Forbidden'}), 403
-    
-    #get information of models
-    name = request.json.get('name')
-    description = request.json.get('description')
-    model_name = request.json.get('model_name')
-    model_type = request.json.get('model_type')
-
-    #gpt2-large
-    tokenizer = GPT2Tokenizer.from_pretrained(model_name)
-    model=GPT2LMHeadModel.from_pretrained(model_name,pad_token_id=tokenizer.eos_token_id)
-    text_generator = pipeline('text-generation', model=model, tokenizer=tokenizer)
-    model_text_generator = pickle.dumps(text_generator)
-
-    # Split the model into chunks
-    chunk_size = 400 * 1024 * 1024  # 10 MB
-    chunks = [model_text_generator[i:i+chunk_size] for i in range(0, len(model_text_generator), chunk_size)]
-
-    # Store the model chunks in Redis
-    for i, chunk in enumerate(chunks):
-        key = f'model_chunk:{i}'
-        redis_client.set(key, chunk)
-
-
-    redis_client.set(model_type, model_text_generator, ex=31536000)
-
-    text_generator_service = Service(name = name, description = description,model_name= model_name, model_type= model_type )
-
-    try:
-        text_generator_service.save()
-        return jsonify(text_generator_service.to_dict()), 201
-    except ValidationError as e:
-        return jsonify({'error': str(e)}), 400
-
-
-@service_bp.route('/text-generation', methods=['POST'])
-def get_text_generator():
-    input_text = request.json.get('text')
-
-    tokenizer = GPT2Tokenizer.from_pretrained('gpt2-large')
-
-    input_ids = tokenizer.encode(input_text, return_tensors='pt')
-
-    model_type = "text_generator"
-
-    model_chunks = []
-    num_chunks = len(redis_client.keys("model_chunk:*"))
-
-    for i in range(num_chunks):
-        key = f'model_chunk:{i}'
-        chunk = redis_client.get(key)
-        if chunk is not None:
-            model_chunks.append(chunk)
-
-    # Concatenate and reconstruct the model data
-    model_data = b''.join(model_chunks)
-
-    # Reconstruct the model from the model data
-    try:
-        model = torch.load(io.BytesIO(model_data))
-    except pickle.UnpicklingError:
-        return jsonify({'error': 'Failed to load model'}), 500
-
-    # Generate text using the model
-    output = model.generate(input_ids, max_length=100, num_beams=5, no_repeat_ngram_size=2, early_stopping=True)
-    result = tokenizer.decode(output[0], skip_special_tokens=True)
-
-    try:
-        return jsonify({'result': result}), 200
-    except ValidationError as e:
-        return jsonify({'error': str(e)}), 400
-
-
-
-    
-# SENTIMENT ANALYSIS
-
-# save sentiment analysis model to redis and database
-@service_bp.route('/set-sentiment-analysis', methods=['POST'])
-@jwt_required()
-def create_sentiment_analysis():
-    #only admin can add service, permission control
-    if not current_user.has_permission('can_create_service'):
-        return jsonify({'message': 'Forbidden'}), 403
-    
-    #get information of models
-    name = request.json.get('name')
-    description = request.json.get('description')
-    model_name = request.json.get('model_name')
-    model_type = request.json.get('model_type')
-
-    model = AutoModelForSequenceClassification.from_pretrained(model_name)
-    tokenizer = AutoTokenizer.from_pretrained(model_name)
-    sentiment_analyzer = pipeline('sentiment-analysis', model=model, tokenizer=tokenizer)
-    model_sentiment_analysis = pickle.dumps(sentiment_analyzer)
-    #result = sentiment_analyzer(input_text)
-
-    redis_client.set(model_type, model_sentiment_analysis, ex=31536000)
-
-    sentiment_analysis = Service(name = name, description = description,model_name= model_name, model_type= model_type )
-
-    try:
-        sentiment_analysis.save()
-        return jsonify(sentiment_analysis.to_dict()), 201
-    except ValidationError as e:
-        return jsonify({'error': str(e)}), 400
-
-
-# use sentiment analysis method
-@service_bp.route('/sentiment-analysis', methods=['POST'])
-def get_sentiment_analysis():
-    
-        input_text = request.json.get('text')
-        model_type = "sentiment-analysis"
-        sentiment_analyzer = pickle.loads(redis_client.get(model_type))
-        result = sentiment_analyzer(input_text)
-    
-        try:
-            return jsonify({'sentiment': result[0]['label']}), 200
-        except ValidationError as e:
-            return jsonify({'error': str(e)}), 400
-
 @service_bp.route('/summarize', methods=['POST'])
 def get_summarizer():
 
@@ -296,7 +171,7 @@ def get_summarizer():
 
 @service_bp.route('/summarizer', methods=['POST'])
 @jwt_required()
-def create_service():
+def create_summarizer():
 
     #only admin can add service, permission control
     if not current_user.has_permission('can_create_service'):
@@ -356,3 +231,27 @@ def rate_service():
 def get_ratings():
     ratings = UserRating.objects.all()
     return jsonify([s.to_dict() for s in ratings]), 200
+
+@service_bp.route('/generate_text', methods=['POST'])
+def generate_text():
+
+    payload = {
+    "inputs": request.json.get('input_text'),
+    "max_length": 200,  # Set max_length to generate longer text
+    "num_return_sequences": 1
+    }
+
+    model_id = "gpt2-large"
+    
+    api_token = Config.api_token
+
+    headers = {"Authorization": f"Bearer {api_token}"}
+    api_url = f"https://api-inference.huggingface.co/models/{model_id}"
+    response = requests.post(api_url, headers=headers, data=json.dumps(payload))
+
+    try:
+        response_data = json.loads(response.content.decode("utf-8"))
+
+        return response_data, 200
+    except ValidationError as e:
+        return jsonify({'error': str(e)}), 400

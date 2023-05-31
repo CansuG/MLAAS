@@ -255,3 +255,114 @@ def generate_text():
         return response_data, 200
     except ValidationError as e:
         return jsonify({'error': str(e)}), 400
+    
+
+# named entity recognition task
+@service_bp.route('/ru-en-translation', methods=['POST'])
+def ru_2_en_translation():
+
+    input_text = request.json.get('text')
+
+    if not input_text:
+        return jsonify({'error': 'Missing input_text field'}), 400   
+
+    payload = {
+     "inputs": input_text,
+     "parameters": {
+            "max_length": 300  # Set the maximum input length here
+        } 
+    }
+
+
+    model_id = "Helsinki-NLP/opus-mt-ru-en"
+    api_token = Config.api_token
+
+    headers = {"Authorization": f"Bearer {api_token}"}
+    api_url = f"https://api-inference.huggingface.co/models/{model_id}"
+    response = requests.post(api_url, headers=headers, data=json.dumps(payload))
+
+    try:
+        response_data = json.loads(response.content.decode("utf-8"))
+
+        return response_data, 200
+    except ValidationError as e:
+        return jsonify({'error': str(e)}), 400
+
+
+@service_bp.route('/zero-shot-classification', methods=['POST'])
+def zero_shot_classification():
+
+    input_text = request.json.get('text')
+    candidate_labels= request.json.get('candidate_labels')
+
+    if not input_text:
+        return jsonify({'error': 'Missing input_text field'}), 400   
+    
+
+    payload = {
+     "inputs": input_text,
+     "parameters": {
+            "candidate_labels": candidate_labels
+        } 
+    }
+
+
+    model_id = "facebook/bart-large-mnli"
+    
+    api_token = Config.api_token
+
+    headers = {"Authorization": f"Bearer {api_token}"}
+    api_url = f"https://api-inference.huggingface.co/models/{model_id}"
+    response = requests.post(api_url, headers=headers, data=json.dumps(payload))
+
+    try:
+        response_data = json.loads(response.content.decode("utf-8"))
+
+        # Get the index of the label with the highest score
+        max_score_index = response_data['scores'].index(max(response_data['scores']))
+
+        # Get the corresponding label using the index
+        max_score_label = response_data['labels'][max_score_index]
+
+        return jsonify({'label': max_score_label}), 200
+
+        return response_data, 200
+    except ValidationError as e:
+        return jsonify({'error': str(e)}), 400
+    
+
+@service_bp.route('/text-2-text-generation', methods=['POST'])
+def text_2_text_generation():
+
+    input_text = request.json.get('text')
+
+    if not input_text:
+        return jsonify({'error': 'Missing input_text field'}), 400   
+    
+
+    payload = {
+     "inputs": input_text
+    }
+
+
+    model_id = "dbmdz/bert-large-cased-finetuned-conll03-english"
+    
+    api_token = Config.api_token
+
+    headers = {"Authorization": f"Bearer {api_token}"}
+    api_url = f"https://api-inference.huggingface.co/models/{model_id}"
+    response = requests.post(api_url, headers=headers, data=json.dumps(payload))
+
+    try:
+        response_data = json.loads(response.content.decode("utf-8"))
+
+        result = []
+        for entity in response_data:
+            result.append({
+                "word": entity["word"],
+                "entity_group": entity["entity_group"]
+        })
+
+        return jsonify(result), 200
+    except ValidationError as e:
+        return jsonify({'error': str(e)}), 400

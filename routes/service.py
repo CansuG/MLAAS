@@ -96,21 +96,6 @@ def gender_classification():
     
     return jsonify({'predicted_image_data': predicted_image_data}), 200
 
-@service_bp.route('/transformers', methods=['POST'])
-def gender_predict():
-    file = request.files['file']
-    filename = file.filename
-    path = os.path.join(UPLOAD_FOLDER, filename)
-    file.save(path)
-    # get predictions
-    pred_image, predictions = faceRecognitionPipeline(path)
-    # save image
-    pred_filename = 'prediction_image.jpg'
-    cv2.imwrite(f'./static/predict/{pred_filename}', pred_image)
-
-    return send_file(f'./static/predict/{pred_filename}', mimetype='image/jpeg')
-
-   # return jsonify({'message': 'Prediction was made successfully'}), 200
 
 @service_bp.route('/set-qa', methods=['POST'])
 @jwt_required()
@@ -325,8 +310,7 @@ def zero_shot_classification():
         max_score_label = response_data['labels'][max_score_index]
 
         return jsonify({'label': max_score_label}), 200
-
-        return response_data, 200
+    
     except ValidationError as e:
         return jsonify({'error': str(e)}), 400
     

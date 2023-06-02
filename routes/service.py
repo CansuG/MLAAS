@@ -221,7 +221,7 @@ def get_ratings():
 def generate_text():
 
     payload = {
-    "inputs": request.json.get('input_text'),
+    "inputs": request.json.get('text'),
     "max_length": 200,  # Set max_length to generate longer text
     "num_return_sequences": 1
     }
